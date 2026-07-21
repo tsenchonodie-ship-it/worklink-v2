@@ -1,0 +1,7 @@
+node_modules/
+vendor/
+dist/
+.env
+.mysql-data/
+.npm-cache/
+*.log

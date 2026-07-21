@@ -1,0 +1,25 @@
+{
+  "name": "tunatuna-service-platform",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1 --configLoader runner",
+    "build": "vite build --configLoader runner",
+    "preview": "vite preview --host 127.0.0.1 --configLoader runner"
+  },
+  "dependencies": {
+    "@tailwindcss/vite": "^4.3.2",
+    "@vitejs/plugin-react": "^4.3.4",
+    "axios": "^1.7.9",
+    "chart.js": "^4.5.1",
+    "leaflet": "^1.9.4",
+    "lucide-react": "^1.24.0",
+    "react": "^19.0.0",
+    "react-chartjs-2": "^5.3.1",
+    "react-dom": "^19.0.0",
+    "react-router-dom": "^7.1.1",
+    "tailwindcss": "^4.3.2",
+    "vite": "^6.0.7"
+  }
+}

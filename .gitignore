@@ -1,7 +1,20 @@
+# Dependencies
 node_modules/
-vendor/
+
+# Build output
 dist/
+
+# Environment files
 .env
-.mysql-data/
-.npm-cache/
+
+# Logs
 *.log
+vite.err.log
+vite.out.log
+php_err.log
+
+# Cache
+.npm-cache/
+
+# Database files
+.mysql-data/

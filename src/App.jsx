@@ -1,6 +1,7 @@
-import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import L from 'leaflet';
+import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import {
   ArrowDownRight,
   ArrowRight,
@@ -50,24 +51,155 @@ import { api, apiMessage, assetUrl } from './api/client';
 import { useAuth } from './context/AuthContext';
 import { Shell } from './components/Shell';
 import { WorkerDetailPage } from './components/WorkerDetailPage';
+import ErrorBoundary from './components/ErrorBoundary';
 import CustomerDashboardPage from './customer/CustomerDashboardPage';
 import WorkerDashboardPage from './worker/WorkerDashboardPage';
+import { Bar, Line } from 'react-chartjs-2';
+import PaymentCheckout from './components/PaymentCheckout';
+import {
+  Chart as ChartJS,
+  CategoryScale,
+  LinearScale,
+  BarElement,
+  PointElement,
+  LineElement,
+  Title,
+  Tooltip,
+  Legend,
+} from 'chart.js';
 
+ChartJS.register(CategoryScale, LinearScale, BarElement, PointElement, LineElement, Title, Tooltip, Legend);
+
+const FIELD_LABEL_STYLE = {
+  fontFamily: "'JetBrains Mono', monospace",
+  fontSize: '10.5px',
+  letterSpacing: '0.14em',
+  textTransform: 'uppercase',
+  color: '#7b8291',
+  display: 'block',
+  marginBottom: '8px',
+};
 
 const currency = new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 });
-const chartOptions = { responsive: true, plugins: { legend: { labels: { color: '#94a3b8' } } }, scales: { x: { ticks: { color: '#94a3b8' }, grid: { color: 'rgba(148,163,184,.12)' } }, y: { ticks: { color: '#94a3b8' }, grid: { color: 'rgba(148,163,184,.12)' } } } };
-const chartOptionsWithYAxis = { ...chartOptions, scales: { ...chartOptions.scales, y: { ticks: { color: '#94a3b8' }, grid: { color: 'rgba(148,163,184,.12)' }, beginAtZero: true } } };
+const chartGridColor = 'rgba(255,255,255,0.06)';
+const chartTickColor = '#8a90a0';
+const chartTooltipStyle = {
+  backgroundColor: 'rgba(2,6,23,0.96)',
+  titleColor: '#f4ecdf',
+  bodyColor: '#cbd5e1',
+  borderColor: 'rgba(255,255,255,0.08)',
+  borderWidth: 1,
+  padding: 12,
+  displayColors: false,
+};
+const chartLegendStyle = { labels: { color: '#cbd5e1' } };
+const chartOptions = {
+  responsive: true,
+  maintainAspectRatio: false,
+  plugins: {
+    legend: chartLegendStyle,
+    tooltip: {
+      ...chartTooltipStyle,
+      callbacks: {
+        title: (items) => items[0]?.label ?? '',
+        label: (context) => `${context.dataset.label}: ${context.formattedValue}`,
+      },
+    },
+  },
+  scales: {
+    x: {
+      ticks: { color: chartTickColor },
+      grid: { color: chartGridColor, drawBorder: false, lineWidth: 1 },
+      border: { color: 'rgba(255,255,255,0.08)' },
+    },
+    y: {
+      ticks: { color: chartTickColor },
+      grid: { color: chartGridColor, drawBorder: false, lineWidth: 1 },
+      border: { color: 'rgba(255,255,255,0.08)' },
+      beginAtZero: true,
+    },
+  },
+};
+const chartOptionsWithYAxis = { ...chartOptions, scales: { ...chartOptions.scales, y: { ...chartOptions.scales.y, beginAtZero: true } } };
 const dashboardAccentColor = '#38bdf8';
 const dashboardAccentSoft = 'rgba(56,189,248,.16)';
+const dashboardAccentGlow = 'rgba(56,189,248,.32)';
 const dashboardChartOptions = {
   responsive: true,
   maintainAspectRatio: false,
-  plugins: { legend: { display: false, labels: { color: '#94a3b8' } } },
+  plugins: {
+    legend: { display: false, labels: { color: '#cbd5e1' } },
+    tooltip: {
+      ...chartTooltipStyle,
+      callbacks: {
+        title: (items) => items[0]?.label ?? '',
+        label: (context) => `${context.dataset.label}: ${context.formattedValue}`,
+      },
+    },
+  },
   scales: {
-    x: { ticks: { color: '#94a3b8' }, grid: { color: 'rgba(148,163,184,.12)', drawBorder: false } },
-    y: { ticks: { color: '#94a3b8' }, grid: { color: 'rgba(148,163,184,.12)', drawBorder: false }, beginAtZero: true },
+    x: {
+      ticks: { color: chartTickColor },
+      grid: { display: false, drawBorder: false },
+      border: { color: 'rgba(255,255,255,0.08)' },
+    },
+    y: {
+      ticks: { color: chartTickColor },
+      grid: { color: chartGridColor, drawBorder: false, lineWidth: 1 },
+      border: { color: 'rgba(255,255,255,0.08)' },
+      beginAtZero: true,
+    },
   },
 };
+const createLineDataset = (items, label) => ({
+  labels: items.map((item) => item.label),
+  datasets: [{
+    label,
+    data: items.map((item) => item.value),
+    borderColor: dashboardAccentColor,
+    borderWidth: 3,
+    pointRadius: 0,
+    pointHoverRadius: 6,
+    pointHoverBorderWidth: 2,
+    pointHoverBorderColor: '#f8fafc',
+    pointBackgroundColor: dashboardAccentColor,
+    pointHitRadius: 12,
+    tension: 0.35,
+    fill: true,
+    cubicInterpolationMode: 'monotone',
+    backgroundColor: (context) => {
+      const { chart, chartArea } = context;
+      if (!chartArea) return dashboardAccentSoft;
+      const gradient = chart.ctx.createLinearGradient(0, chartArea.top, 0, chartArea.bottom);
+      gradient.addColorStop(0, dashboardAccentGlow);
+      gradient.addColorStop(1, 'rgba(56,189,248,0)');
+      return gradient;
+    },
+  }],
+});
+const createBarDataset = (items, label, labelKey = 'name') => ({
+  labels: items.map((item) => item[labelKey] || item.label),
+  datasets: [{
+    label,
+    data: items.map((item) => item.value),
+    borderColor: 'rgba(56,189,248,0.64)',
+    borderWidth: 1,
+    borderRadius: [6, 6, 0, 0],
+    borderSkipped: false,
+    barPercentage: 0.8,
+    categoryPercentage: 0.8,
+    hoverBackgroundColor: '#57d3ff',
+    hoverBorderColor: '#f8fafc',
+    backgroundColor: (context) => {
+      const { chart, chartArea } = context;
+      if (!chartArea) return dashboardAccentColor;
+      const gradient = chart.ctx.createLinearGradient(0, chartArea.top, 0, chartArea.bottom);
+      gradient.addColorStop(0, 'rgba(56,189,248,0.9)');
+      gradient.addColorStop(1, 'rgba(56,189,248,0.22)');
+      return gradient;
+    },
+  }],
+});
 const statusFlow = ['pending', 'confirmed', 'accepted', 'in_progress', 'completed', 'reviewed'];
 const paymentMethods = [
   { id: 'upi', label: 'UPI', detail: 'Demo UPI payment', icon: Smartphone },
@@ -619,9 +751,23 @@ function BookingModal({ worker, onClose, show, onBooked }) {
 
 function Dashboard({ show, theme, toggleTheme }) {
   const { user } = useAuth();
-  if (user.role === 'admin') return <AdminDashboard show={show} />;
-  if (user.role === 'worker') return <WorkerDashboard show={show} />;
-  return <CustomerDashboardPage show={show} theme={theme} toggleTheme={toggleTheme} />;
+
+  if (!user) return <Loader />;
+  if (user.role === 'admin') return (
+    <ErrorBoundary>
+      <AdminDashboard show={show} />
+    </ErrorBoundary>
+  );
+  if (user.role === 'worker') return (
+    <ErrorBoundary>
+      <WorkerDashboard show={show} />
+    </ErrorBoundary>
+  );
+  return (
+    <ErrorBoundary>
+      <CustomerDashboardPage show={show} theme={theme} toggleTheme={toggleTheme} />
+    </ErrorBoundary>
+  );
 }
 
 function CustomerDashboard({ show }) {
@@ -868,6 +1014,16 @@ function AdminDashboard({ show }) {
   const [searchTerm, setSearchTerm] = useState('');
   const [activeSection, setActiveSection] = useState('dashboard');
 
+  const normalizeCollection = (value) => {
+    if (Array.isArray(value)) return value;
+    if (Array.isArray(value?.data)) return value.data;
+    if (value && typeof value === 'object') {
+      const fallback = value.data ?? value.items ?? value.results ?? value.records;
+      return Array.isArray(fallback) ? fallback : [];
+    }
+    return [];
+  };
+
   const load = async () => {
     try {
       const params = paymentStatus ? `?status=${paymentStatus}` : '';
@@ -881,14 +1037,14 @@ function AdminDashboard({ show }) {
         api.get('/reviews'),
         api.get('/notifications'),
       ]);
-      setData(dash.data);
-      setCustomers(customerRes.data);
-      setWorkers(workerRes.data);
-      setBookings(bookingRes.data);
-      setCategories(categoryRes.data);
-      setPayments(paymentRes.data);
-      setReviews(reviewRes.data || []);
-      setNotifications(notificationRes.data || []);
+      setData(dash?.data ?? dash);
+      setCustomers(normalizeCollection(customerRes?.data ?? customerRes));
+      setWorkers(normalizeCollection(workerRes?.data ?? workerRes));
+      setBookings(normalizeCollection(bookingRes?.data ?? bookingRes));
+      setCategories(normalizeCollection(categoryRes?.data ?? categoryRes));
+      setPayments(normalizeCollection(paymentRes?.data ?? paymentRes));
+      setReviews(normalizeCollection(reviewRes?.data ?? reviewRes));
+      setNotifications(normalizeCollection(notificationRes?.data ?? notificationRes));
     } catch (e) {
       show(apiMessage(e), 'error');
     }
@@ -2269,8 +2425,7 @@ function AdminDashboardLayout({ user, collapsed, setCollapsed, clock, notificati
       <section className={`dashboard-wrap ${theme === 'light' ? 'theme-light' : 'theme-dark'}`}>
         <aside className={`dashboard-sidebar ${mobileNavOpen ? 'flex' : 'hidden'} md:flex ${collapsed ? 'collapsed' : ''}`}>
           <div className="mb-6 flex items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/[.04] p-3">
-            <div className="flex items-center gap-3">
-              <span className="grid h-11 w-11 place-items-center rounded-xl bg-gradient-to-br from-blue-500 to-cyan-400 font-black text-white">TT</span>
+            <div className="flex items-center">
               <div>
                 <strong className="text-white">TunaTuna</strong>
                 <small>{user?.role || 'Admin'} workspace</small>
@@ -2319,7 +2474,7 @@ function AdminDashboardLayout({ user, collapsed, setCollapsed, clock, notificati
               <button className="icon-btn" type="button" onClick={toggleTheme} aria-label="Toggle admin theme">
                 {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
               </button>
-              <button className="icon-btn" type="button" aria-label="Notifications">
+              <button className="icon-btn" type="button" aria-label="Notifications" onClick={() => handleNavSelect('notifications')}>
                 <Bell size={18} />
                 {notificationCount ? <span className="notification-badge">{notificationCount}</span> : null}
               </button>
@@ -2408,8 +2563,7 @@ function CustomerDashboardLayout({ title, activeView, onSelect, quickActions, ch
   return (
     <section className="dashboard-wrap">
       <aside className={`dashboard-sidebar ${mobileNavOpen ? 'flex' : 'hidden'} md:flex`}>
-        <div className="mb-6 flex items-center gap-3 rounded-2xl border border-white/10 bg-white/[.04] p-3">
-          <span className="grid h-11 w-11 place-items-center rounded-xl bg-gradient-to-br from-blue-500 to-cyan-400 font-black text-white">TT</span>
+        <div className="mb-6 flex items-center rounded-2xl border border-white/10 bg-white/[.04] p-3">
           <div>
             <strong className="text-white">TunaTuna</strong>
             <small>{user.role} workspace</small>
@@ -2452,7 +2606,7 @@ function DashboardLayout({ title, quick, children }) {
   return (
     <section className="dashboard-wrap">
       <aside className="dashboard-sidebar">
-        <div className="mb-8 flex items-center gap-3"><span className="grid h-11 w-11 place-items-center rounded-xl bg-blue-500 font-black">TT</span><div><strong>TunaTuna</strong><small>{user.role} workspace</small></div></div>
+        <div className="mb-8 flex items-center"><div><strong>TunaTuna</strong><small>{user.role} workspace</small></div></div>
         {nav.map(([label, path]) => <Link key={label} className="side-link" to={path}><Home size={17} /> {label}</Link>)}
         <button className="side-link mt-auto" onClick={logout}><LogOut size={17} /> Logout</button>
       </aside>
@@ -3309,6 +3463,20 @@ function ReportsPage({ bookings, customers, workers, payments, show }) {
   );
 }
 
+function AnalyticsChartCard({ eyebrow, title, children, className = '' }) {
+  return (
+    <div className={`glass-card p-4 report-card analytics-chart-card ${className}`.trim()}>
+      <div className="section-head analytics-chart-head">
+        <div>
+          <p className="eyebrow">{eyebrow}</p>
+          <h3>{title}</h3>
+        </div>
+      </div>
+      <div className="analytics-chart-shell">{children}</div>
+    </div>
+  );
+}
+
 function AnalyticsPage({ data, bookings, customers, workers, payments }) {
   const charts = data?.charts || {};
   const monthlyBookings = charts.monthlyBookings || [];
@@ -3343,36 +3511,21 @@ function AnalyticsPage({ data, bookings, customers, workers, payments }) {
       </div>
 
       <div className="analytics-grid">
-        <div className="glass-card p-4 report-card">
-          <div className="section-head"><div><p className="eyebrow">Performance</p><h3>Monthly bookings</h3></div></div>
-          <div className="overview-chart-canvas">
-            <Line data={{ labels: monthlyBookings.map((item) => item.label), datasets: [{ label: 'Bookings', data: monthlyBookings.map((item) => item.value), borderColor: dashboardAccentColor, backgroundColor: dashboardAccentSoft, tension: .35 }] }} options={dashboardChartOptions} />
-          </div>
-        </div>
-        <div className="glass-card p-4 report-card">
-          <div className="section-head"><div><p className="eyebrow">Revenue</p><h3>Monthly revenue</h3></div></div>
-          <div className="overview-chart-canvas">
-            <Line data={{ labels: monthlyRevenue.map((item) => item.label), datasets: [{ label: 'Revenue', data: monthlyRevenue.map((item) => item.value), borderColor: dashboardAccentColor, backgroundColor: dashboardAccentSoft, tension: .35 }] }} options={dashboardChartOptions} />
-          </div>
-        </div>
-        <div className="glass-card p-4 report-card">
-          <div className="section-head"><div><p className="eyebrow">Growth</p><h3>Worker growth</h3></div></div>
-          <div className="overview-chart-canvas">
-            <Line data={{ labels: workerGrowth.map((item) => item.label), datasets: [{ label: 'Workers', data: workerGrowth.map((item) => item.value), borderColor: dashboardAccentColor, backgroundColor: dashboardAccentSoft, tension: .35 }] }} options={dashboardChartOptions} />
-          </div>
-        </div>
-        <div className="glass-card p-4 report-card">
-          <div className="section-head"><div><p className="eyebrow">Growth</p><h3>Customer growth</h3></div></div>
-          <div className="overview-chart-canvas">
-            <Line data={{ labels: customerGrowth.map((item) => item.label), datasets: [{ label: 'Customers', data: customerGrowth.map((item) => item.value), borderColor: dashboardAccentColor, backgroundColor: dashboardAccentSoft, tension: .35 }] }} options={dashboardChartOptions} />
-          </div>
-        </div>
-        <div className="glass-card p-4 report-card analytics-wide">
-          <div className="section-head"><div><p className="eyebrow">Demand</p><h3>Most popular services</h3></div></div>
-          <div className="overview-chart-canvas">
-            <Bar data={{ labels: mostBookedServices.map((item) => item.name || item.label), datasets: [{ label: 'Requests', data: mostBookedServices.map((item) => item.value), backgroundColor: Array.from({ length: mostBookedServices.length }, () => dashboardAccentColor) }] }} options={dashboardChartOptions} />
-          </div>
-        </div>
+        <AnalyticsChartCard eyebrow="Performance" title="Monthly bookings">
+          <Line data={createLineDataset(monthlyBookings, 'Bookings')} options={dashboardChartOptions} />
+        </AnalyticsChartCard>
+        <AnalyticsChartCard eyebrow="Revenue" title="Monthly revenue">
+          <Line data={createLineDataset(monthlyRevenue, 'Revenue')} options={dashboardChartOptions} />
+        </AnalyticsChartCard>
+        <AnalyticsChartCard eyebrow="Growth" title="Worker growth">
+          <Line data={createLineDataset(workerGrowth, 'Workers')} options={dashboardChartOptions} />
+        </AnalyticsChartCard>
+        <AnalyticsChartCard eyebrow="Growth" title="Customer growth">
+          <Line data={createLineDataset(customerGrowth, 'Customers')} options={dashboardChartOptions} />
+        </AnalyticsChartCard>
+        <AnalyticsChartCard eyebrow="Demand" title="Most popular services" className="analytics-wide">
+          <Bar data={createBarDataset(mostBookedServices, 'Requests')} options={dashboardChartOptions} />
+        </AnalyticsChartCard>
       </div>
     </section>
   );
@@ -3729,32 +3882,215 @@ function ProfileSettings({ show, heading = 'Profile & Settings', eyebrow = 'Prof
   );
 }
 
-function AuthIllustration({ accent = 'customer' }) {
-  const color = accent === 'worker' ? '#38bdf8' : '#7c3aed';
+function LampLoginForm({ role, setRole, form, setForm, showPassword, setShowPassword, busy, onSubmit }) {
+  const [isOn, setIsOn] = useState(false);
+  const [focusedField, setFocusedField] = useState(null);
+  const [status, setStatus] = useState('idle');
+  const [keepLightOn, setKeepLightOn] = useState(false);
+  const prefersReducedMotion = useReducedMotion();
+
+  const dustMotes = useMemo(
+    () => Array.from({ length: 7 }).map((_, index) => ({
+      id: index,
+      left: 18 + Math.random() * 64,
+      top: 15 + Math.random() * 70,
+      size: 2 + Math.random() * 2.5,
+      duration: 4 + Math.random() * 3,
+      delay: Math.random() * 2,
+    })),
+    []
+  );
+
+  const toggleLamp = useCallback(() => {
+    setIsOn((previous) => !previous);
+  }, []);
+
+  const identifierValue = role === 'admin' ? (form.username || '') : (form.email || '');
+  const identifierPlaceholder = role === 'admin' ? 'Admin username' : 'Email address';
+
+  const handleIdentifierChange = (event) => {
+    if (role === 'admin') {
+      setForm((previous) => ({ ...previous, username: event.target.value }));
+    } else {
+      setForm((previous) => ({ ...previous, email: event.target.value }));
+    }
+  };
+
+  const handleSubmit = async (event) => {
+    event.preventDefault();
+    if (!identifierValue || !form.password || status !== 'idle') return;
+    setStatus('loading');
+    try {
+      await onSubmit(event);
+      setStatus('success');
+      window.setTimeout(() => setStatus('idle'), 1400);
+    } catch {
+      setStatus('idle');
+    }
+  };
+
   return (
-    <svg viewBox="0 0 640 640" className="auth-illustration" role="img" aria-label="Premium home service illustration">
-      <rect x="70" y="70" width="500" height="500" rx="38" fill="url(#bg)" />
-      <circle cx="180" cy="180" r="78" fill="rgba(255,255,255,0.24)" />
-      <circle cx="470" cy="188" r="52" fill="rgba(56,189,248,0.22)" />
-      <rect x="122" y="290" width="182" height="160" rx="22" fill="rgba(255,255,255,0.78)" />
-      <rect x="324" y="250" width="192" height="200" rx="24" fill="rgba(15,23,42,0.16)" />
-      <rect x="146" y="314" width="134" height="104" rx="16" fill={color} opacity="0.9" />
-      <rect x="350" y="274" width="140" height="92" rx="18" fill="rgba(255,255,255,0.88)" />
-      <rect x="352" y="386" width="136" height="46" rx="16" fill="rgba(255,255,255,0.76)" />
-      <rect x="198" y="188" width="92" height="72" rx="18" fill="rgba(15,23,42,0.86)" />
-      <rect x="418" y="180" width="96" height="40" rx="12" fill="rgba(15,23,42,0.75)" />
-      <path d="M218 188c0-38 30-68 68-68s68 30 68 68" stroke="#fff" strokeWidth="14" fill="none" strokeLinecap="round" />
-      <circle cx="286" cy="182" r="18" fill="#fff" />
-      <path d="M208 404c22-46 62-72 110-72s88 26 110 72" fill="none" stroke="#fff" strokeWidth="12" strokeLinecap="round" />
-      <defs>
-        <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stopColor="#1d4ed8" />
-          <stop offset="100%" stopColor="#7c3aed" />
-        </linearGradient>
-      </defs>
-    </svg>
+    <div style={lampStyles.stage}>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,480;1,9..144,480&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap');
+        .lamp-card * { box-sizing: border-box; }
+        .lamp-btn { cursor: pointer; background: none; border: none; padding: 0; }
+        .lamp-btn:focus-visible .lamp-shade,
+        .lamp-btn:focus-visible .lamp-bulb { outline: 2px solid #ffb35c; outline-offset: 4px; border-radius: 4px; }
+        .llf-input { width: 100%; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.09); border-radius: 10px; padding: 12px 14px 12px 40px; color: #f4ecdf; font-family: 'Inter', sans-serif; font-size: 14.5px; outline: none; transition: border-color 0.25s ease, box-shadow 0.25s ease, background 0.25s ease; }
+        .llf-input::placeholder { color: #4d5261; }
+        .llf-input:focus { border-color: rgba(255,179,92,0.55); box-shadow: 0 0 0 3px rgba(255,179,92,0.12); background: rgba(255,179,92,0.04); }
+        .llf-eye-btn { background: none; border: none; cursor: pointer; color: #6b7280; display: flex; align-items: center; padding: 4px; transition: color 0.2s ease; }
+        .llf-eye-btn:hover { color: #ffb35c; }
+        .llf-submit { width: 100%; border: none; border-radius: 10px; padding: 13px 16px; font-family: 'Inter', sans-serif; font-weight: 600; font-size: 14.5px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; color: #14100a; background: linear-gradient(180deg, #ffcd8c 0%, #ffb35c 100%); box-shadow: 0 8px 22px -8px rgba(255,179,92,0.55); transition: transform 0.15s ease, box-shadow 0.15s ease, filter 0.15s ease; }
+        .llf-submit:hover { filter: brightness(1.05); transform: translateY(-1px); }
+        .llf-submit:active { transform: translateY(0); }
+        .llf-submit:disabled { cursor: default; }
+        .llf-link { font-family: 'Inter', sans-serif; font-size: 12.5px; color: #7b8291; background: none; border: none; cursor: pointer; transition: color 0.2s ease; }
+        .llf-link:hover { color: #ffb35c; }
+        .llf-switch-track { width: 38px; height: 21px; border-radius: 999px; border: none; cursor: pointer; position: relative; padding: 0; transition: background 0.25s ease; }
+        @keyframes llf-spin { to { transform: rotate(360deg); } }
+        .llf-spin { animation: llf-spin 0.8s linear infinite; }
+        @media (prefers-reduced-motion: reduce) { .llf-spin { animation-duration: 1.6s; } }
+      `}</style>
+
+      <motion.div layout className="lamp-card" style={lampStyles.card} transition={{ layout: { duration: 0.5, ease: [0.22, 1, 0.36, 1] } }}>
+        <div style={lampStyles.lampZone}>
+          <div style={lampStyles.cord} />
+          <button type="button" className="lamp-btn" onClick={toggleLamp} aria-pressed={isOn} aria-label={isOn ? 'Turn lamp off' : 'Turn lamp on, reveal sign in form'} style={lampStyles.lampButtonWrap}>
+            <AnimatePresence>
+              {isOn && (
+                <motion.div className="lamp-cone-wrap" style={lampStyles.coneWrap} initial={{ opacity: 0, scaleY: 0 }} animate={prefersReducedMotion ? { opacity: 1, scaleY: 1 } : { opacity: [0, 1, 0.35, 1, 0.7, 1], scaleY: 1 }} exit={{ opacity: 0, scaleY: 0.85, transition: { duration: 0.18, ease: 'easeIn' } }} transition={{ duration: prefersReducedMotion ? 0.3 : 0.7, times: prefersReducedMotion ? undefined : [0, 0.12, 0.22, 0.4, 0.55, 1], ease: 'easeOut' }}>
+                  <div style={lampStyles.cone} />
+                  {!prefersReducedMotion && dustMotes.map((mote) => (
+                    <motion.span key={mote.id} style={{ position: 'absolute', left: `${mote.left}%`, top: `${mote.top}%`, width: mote.size, height: mote.size, borderRadius: '50%', background: 'rgba(255,230,190,0.75)' }} animate={{ y: [0, -10, 0], opacity: [0.15, 0.7, 0.15] }} transition={{ duration: mote.duration, delay: mote.delay, repeat: Infinity, ease: 'easeInOut' }} />
+                  ))}
+                </motion.div>
+              )}
+            </AnimatePresence>
+            <motion.div className="lamp-shade" style={lampStyles.shade} animate={{ background: isOn ? 'linear-gradient(180deg, #565c68 0%, #383d47 100%)' : 'linear-gradient(180deg, #33373f 0%, #24272e 100%)' }} transition={{ duration: 0.4 }}>
+              <motion.div className="lamp-bulb" style={lampStyles.bulb} animate={isOn ? (prefersReducedMotion ? { opacity: 1, boxShadow: '0 0 18px 6px rgba(255,179,92,0.9)' } : { opacity: [0, 1, 0.3, 1, 0.6, 1], boxShadow: '0 0 18px 6px rgba(255,179,92,0.9)' }) : { opacity: 0.5, boxShadow: '0 0 0px 0px rgba(255,179,92,0)' }} transition={{ duration: isOn && !prefersReducedMotion ? 0.7 : 0.3, times: isOn && !prefersReducedMotion ? [0, 0.12, 0.22, 0.4, 0.55, 1] : undefined }} />
+            </motion.div>
+          </button>
+          <div style={lampStyles.baseCap} />
+        </div>
+
+        <div style={lampStyles.headerZone}>
+          <AnimatePresence mode="wait">
+            {!isOn ? (
+              <motion.div key="off-caption" initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -4 }} transition={{ duration: 0.25 }} style={{ textAlign: 'center' }}>
+                <p style={lampStyles.eyebrow}>STUDIO ACCESS</p>
+                <p style={lampStyles.dimLine}>the lamp is off — click it to sign in</p>
+              </motion.div>
+            ) : (
+              <motion.div key="on-caption" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} transition={{ duration: 0.35, delay: 0.1 }} style={{ textAlign: 'center' }}>
+                <h1 style={lampStyles.heading}>Good evening.</h1>
+                <p style={lampStyles.subheading}>Sign in to get back to work.</p>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+
+        <AnimatePresence>
+          {isOn && (
+            <motion.form onSubmit={handleSubmit} initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0, transition: { duration: 0.2 } }} transition={{ duration: 0.4, delay: 0.15, ease: 'easeOut' }} style={{ overflow: 'hidden' }}>
+              <div style={{ paddingTop: 6 }}>
+                <div style={{ marginBottom: 12 }}>
+                  <div style={lampStyles.roleRow}>
+                    {['customer', 'worker', 'admin'].map((item) => (
+                      <button key={item} type="button" onClick={() => setRole(item)} style={{ ...lampStyles.rolePill, ...(role === item ? lampStyles.rolePillActive : {}) }}>{item}</button>
+                    ))}
+                  </div>
+                </div>
+
+                <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.22, duration: 0.35 }} style={{ marginBottom: 16 }}>
+                  <label style={FIELD_LABEL_STYLE} htmlFor="llf-identity">{role === 'admin' ? 'Admin username' : 'Email'}</label>
+                  <div style={lampStyles.inputRow}>
+                    {role === 'admin' ? <Lock size={16} style={lampStyles.inputIcon(focusedField === 'identity')} /> : <Mail size={16} style={lampStyles.inputIcon(focusedField === 'identity')} />}
+                    <input id="llf-identity" className="llf-input" type={role === 'admin' ? 'text' : 'email'} placeholder={identifierPlaceholder} value={identifierValue} onChange={handleIdentifierChange} onFocus={() => setFocusedField('identity')} onBlur={() => setFocusedField(null)} required />
+                  </div>
+                </motion.div>
+
+                <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3, duration: 0.35 }} style={{ marginBottom: 14 }}>
+                  <div style={lampStyles.labelRow}>
+                    <label style={{ ...FIELD_LABEL_STYLE, marginBottom: 0 }} htmlFor="llf-password">Password</label>
+                    <Link className="llf-link" to="/forgot">Forgot password?</Link>
+                  </div>
+                  <div style={{ ...lampStyles.inputRow, marginTop: 8 }}>
+                    <Lock size={16} style={lampStyles.inputIcon(focusedField === 'password')} />
+                    <input id="llf-password" className="llf-input" type={showPassword ? 'text' : 'password'} placeholder="••••••••" value={form.password} onChange={(event) => setForm((previous) => ({ ...previous, password: event.target.value }))} onFocus={() => setFocusedField('password')} onBlur={() => setFocusedField(null)} style={{ paddingRight: 40 }} required />
+                    <button type="button" className="llf-eye-btn" style={lampStyles.eyeBtnPos} onClick={() => setShowPassword((current) => !current)} aria-label={showPassword ? 'Hide password' : 'Show password'}>
+                      {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                    </button>
+                  </div>
+                </motion.div>
+
+                <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.36, duration: 0.35 }} style={lampStyles.rememberRow}>
+                  <span style={lampStyles.rememberLabel}>Keep the light on</span>
+                  <button type="button" className="llf-switch-track" style={{ background: keepLightOn ? '#ffb35c' : 'rgba(255,255,255,0.12)' }} role="switch" aria-checked={keepLightOn} aria-label="Keep the light on (remember me)" onClick={() => setKeepLightOn((current) => !current)}>
+                    <motion.span style={lampStyles.switchThumb} animate={{ x: keepLightOn ? 17 : 2 }} transition={{ type: 'spring', stiffness: 500, damping: 32 }} />
+                  </button>
+                </motion.div>
+
+                <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.44, duration: 0.35 }} style={{ marginTop: 22 }}>
+                  <button type="submit" className="llf-submit" disabled={busy || status !== 'idle'}>
+                    {status === 'idle' && (
+                      <>
+                        Sign in <ArrowRight size={16} />
+                      </>
+                    )}
+                    {status === 'loading' && (
+                      <>
+                        <Loader2 size={16} className="llf-spin" /> Signing in…
+                      </>
+                    )}
+                    {status === 'success' && (
+                      <>
+                        <Check size={16} /> Welcome back
+                      </>
+                    )}
+                  </button>
+                </motion.div>
+
+                <div style={{ marginTop: 14, textAlign: 'center' }}>
+                  <Link className="llf-link" to="/register">Create new account</Link>
+                </div>
+              </div>
+            </motion.form>
+          )}
+        </AnimatePresence>
+      </motion.div>
+    </div>
   );
 }
+
+const lampStyles = {
+  stage: { width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: "'Inter', sans-serif" },
+  card: { width: '100%', background: 'linear-gradient(180deg, #12151c 0%, #0d0f14 100%)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 22, padding: '36px 32px 34px', boxShadow: '0 30px 60px -20px rgba(0,0,0,0.7)', position: 'relative' },
+  lampZone: { display: 'flex', flexDirection: 'column', alignItems: 'center', position: 'relative', height: 92 },
+  cord: { width: 3, height: 22, background: 'linear-gradient(180deg, #454a56, #2b2f38)', borderRadius: 2 },
+  lampButtonWrap: { position: 'relative', width: 130, height: 56, display: 'flex', justifyContent: 'center', alignItems: 'flex-start' },
+  coneWrap: { position: 'absolute', top: 44, left: '50%', width: 210, height: 170, transform: 'translateX(-50%)', transformOrigin: 'top center', pointerEvents: 'none' },
+  cone: { position: 'absolute', inset: 0, clipPath: 'polygon(38% 0%, 62% 0%, 100% 100%, 0% 100%)', background: 'linear-gradient(180deg, rgba(255,214,150,0.55) 0%, rgba(255,179,92,0.16) 55%, rgba(255,179,92,0) 100%)', filter: 'blur(1px)' },
+  shade: { position: 'relative', width: 96, height: 38, clipPath: 'polygon(30% 0%, 70% 0%, 100% 100%, 0% 100%)', zIndex: 2 },
+  bulb: { position: 'absolute', left: '50%', bottom: -3, width: 12, height: 12, borderRadius: '50%', background: '#ffe6bd', transform: 'translateX(-50%)', zIndex: 3 },
+  baseCap: { width: 16, height: 4, borderRadius: 2, background: '#24272e', marginTop: -2 },
+  headerZone: { marginTop: 14, marginBottom: 6, minHeight: 54, display: 'flex', alignItems: 'center', justifyContent: 'center' },
+  eyebrow: { fontFamily: "'JetBrains Mono', monospace", fontSize: 10.5, letterSpacing: '0.18em', color: '#454a56', margin: '0 0 6px' },
+  dimLine: { fontFamily: "'Inter', sans-serif", fontSize: 13.5, color: '#6b7280', margin: 0 },
+  heading: { fontFamily: "'Fraunces', serif", fontStyle: 'italic', fontWeight: 480, fontSize: 28, color: '#f4ecdf', margin: '0 0 6px' },
+  subheading: { fontFamily: "'Inter', sans-serif", fontSize: 13.5, color: '#8a90a0', margin: 0 },
+  inputRow: { position: 'relative', display: 'flex', alignItems: 'center' },
+  inputIcon: (active) => ({ position: 'absolute', left: 14, color: active ? '#ffb35c' : '#565c68', transition: 'color 0.25s ease', zIndex: 1, pointerEvents: 'none' }),
+  eyeBtnPos: { position: 'absolute', right: 10 },
+  labelRow: { display: 'flex', alignItems: 'center', justifyContent: 'space-between' },
+  rememberRow: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 4 },
+  rememberLabel: { fontFamily: "'Inter', sans-serif", fontSize: 13, color: '#8a90a0' },
+  switchThumb: { position: 'absolute', top: 2, left: 0, width: 17, height: 17, borderRadius: '50%', background: '#0d0f14' },
+  roleRow: { display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'center' },
+  rolePill: { border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.04)', color: '#8a90a0', padding: '6px 10px', borderRadius: 999, fontSize: 12, textTransform: 'capitalize', cursor: 'pointer' },
+  rolePillActive: { background: 'rgba(255,179,92,0.16)', color: '#ffb35c', borderColor: 'rgba(255,179,92,0.35)' },
+};
 
 function AuthPage({ mode, show }) {
   const { login, register, forgotPassword, user } = useAuth();
@@ -3945,7 +4281,6 @@ function AuthPage({ mode, show }) {
               <span className="auth-pill"><CheckCircle2 size={16} /> Secure onboarding</span>
             </div>
           </div>
-          <AuthIllustration accent="customer" />
         </div>
         <div className="auth-choice-grid">
           <Link className="auth-choice-card glass-card" to="/register/customer">
@@ -3969,9 +4304,8 @@ function AuthPage({ mode, show }) {
     <section className="auth-shell auth-shell-split">
       <aside className="auth-side-panel glass-card">
         <div className="auth-brand">
-          <div className="auth-brand-mark">TT</div>
           <div>
-            <strong>WorkLink</strong>
+            <h1 className="auth-brand-heading">WorkLink</h1>
             <p>Trusted home services</p>
           </div>
         </div>
@@ -3985,37 +4319,42 @@ function AuthPage({ mode, show }) {
             <span><CheckCircle2 size={16} /> Safe and secure platform</span>
           </div>
         </div>
-        <AuthIllustration accent={mode === 'register-worker' ? 'worker' : 'customer'} />
       </aside>
       <div className="auth-form-panel glass-card">
-        <div className="auth-form-head">
-          <p className="eyebrow">{mode === 'forgot' ? 'Recover Access' : mode === 'register-customer' ? 'Customer Registration' : mode === 'register-worker' ? 'Worker Registration' : 'Secure Login'}</p>
-          <h2>{mode === 'forgot' ? 'Forgot your password?' : mode === 'register-customer' ? 'Customer Registration' : mode === 'register-worker' ? 'Worker Registration' : 'Welcome back'}</h2>
-        </div>
-        <form className="auth-form" onSubmit={submit}>
-          {commonFields}
-          <div className="auth-inline-row">
-            {mode === 'login' && (
-              <label className="auth-check-row">
-                <input type="checkbox" defaultChecked />
-                <span>Remember me</span>
-              </label>
-            )}
-            {mode === 'login' ? <Link className="auth-link" to="/forgot">Forgot password?</Link> : <Link className="auth-link" to="/login">Already have an account?</Link>}
-          </div>
-          {(mode === 'register-customer' || mode === 'register-worker') && (
-            <Link className="btn-ghost auth-submit" to="/register">Back</Link>
-          )}
-          <button className="btn-primary auth-submit" type="submit" disabled={busy}>
-            {busy ? <><LoaderCircle className="animate-spin" size={18} /> Please wait...</> : mode === 'forgot' ? 'Send reset request' : mode === 'register-customer' ? 'Create customer account' : mode === 'register-worker' ? 'Submit application' : 'Sign in'}
-          </button>
-          {mode === 'login' && (
-            <Link className="btn-ghost auth-submit" to="/register">Create new account</Link>
-          )}
-          <div className="auth-footnote">
-            {mode === 'login' ? 'Demo admin: admin / admin123' : mode === 'register-worker' ? 'Your worker account will stay pending until an admin approves it.' : 'Your details are protected with industry-standard security.'}
-          </div>
-        </form>
+        {mode === 'login' ? (
+          <LampLoginForm role={role} setRole={setRole} form={form} setForm={setForm} showPassword={showPassword} setShowPassword={setShowPassword} busy={busy} onSubmit={submit} />
+        ) : (
+          <>
+            <div className="auth-form-head">
+              <p className="eyebrow">{mode === 'forgot' ? 'Recover Access' : mode === 'register-customer' ? 'Customer Registration' : mode === 'register-worker' ? 'Worker Registration' : 'Secure Login'}</p>
+              <h2>{mode === 'forgot' ? 'Forgot your password?' : mode === 'register-customer' ? 'Customer Registration' : mode === 'register-worker' ? 'Worker Registration' : 'Welcome back'}</h2>
+            </div>
+            <form className="auth-form" onSubmit={submit}>
+              {commonFields}
+              <div className="auth-inline-row">
+                {mode === 'login' && (
+                  <label className="auth-check-row">
+                    <input type="checkbox" defaultChecked />
+                    <span>Remember me</span>
+                  </label>
+                )}
+                {mode === 'login' ? <Link className="auth-link" to="/forgot">Forgot password?</Link> : <Link className="auth-link" to="/login">Already have an account?</Link>}
+              </div>
+              {(mode === 'register-customer' || mode === 'register-worker') && (
+                <Link className="btn-ghost auth-submit" to="/register">Back</Link>
+              )}
+              <button className="btn-primary auth-submit" type="submit" disabled={busy}>
+                {busy ? <><LoaderCircle className="animate-spin" size={18} /> Please wait...</> : mode === 'forgot' ? 'Send reset request' : mode === 'register-customer' ? 'Create customer account' : mode === 'register-worker' ? 'Submit application' : 'Sign in'}
+              </button>
+              {mode === 'login' && (
+                <Link className="btn-ghost auth-submit" to="/register">Create new account</Link>
+              )}
+              <div className="auth-footnote">
+                {mode === 'login' ? 'Demo admin: admin / admin123' : mode === 'register-worker' ? 'Your worker account will stay pending until an admin approves it.' : 'Your details are protected with industry-standard security.'}
+              </div>
+            </form>
+          </>
+        )}
       </div>
     </section>
   );
@@ -4108,6 +4447,7 @@ export default function App() {
         <Route path="/register/customer" element={<AuthPage mode="register-customer" show={show} />} />
         <Route path="/register/worker" element={<AuthPage mode="register-worker" show={show} />} />
         <Route path="/forgot" element={<AuthPage mode="forgot" show={show} />} />
+        <Route path="/checkout" element={<PaymentCheckout />} />
         <Route path="/dashboard/*" element={<Protected roles={['admin', 'customer', 'worker']}><Dashboard show={show} theme={theme} toggleTheme={() => setTheme((current) => (current === 'dark' ? 'light' : 'dark'))} /></Protected>} />
         <Route path="/settings" element={<Protected roles={['customer', 'worker']}><SettingsPage show={show} /></Protected>} />
       </Routes>

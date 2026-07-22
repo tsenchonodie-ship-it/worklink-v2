@@ -6,13 +6,24 @@ const AuthContext = createContext(null);
 export function AuthProvider({ children }) {
   const [token, setToken] = useState(() => localStorage.getItem('tunatuna_token'));
   const [user, setUser] = useState(() => {
-    const saved = localStorage.getItem('tunatuna_user');
-    return saved ? JSON.parse(saved) : null;
+    try {
+      const saved = localStorage.getItem('tunatuna_user');
+      // Lightweight debug to help track session restoration
+      // eslint-disable-next-line no-console
+      if (saved) console.debug('AuthContext: restored user from localStorage');
+      return saved ? JSON.parse(saved) : null;
+    } catch {
+      // eslint-disable-next-line no-console
+      console.debug('AuthContext: failed to parse saved user');
+      return null;
+    }
   });
 
   const saveSession = (payload) => {
     localStorage.setItem('tunatuna_token', payload.token);
     localStorage.setItem('tunatuna_user', JSON.stringify(payload.user));
+    // eslint-disable-next-line no-console
+    console.debug('AuthContext: saveSession', payload.user?.role || 'unknown');
     setToken(payload.token);
     setUser(payload.user);
   };

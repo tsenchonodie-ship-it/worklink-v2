@@ -18,8 +18,7 @@ export function Shell({ toast, theme, toggleTheme }) {
     <>
       <header className="sticky top-0 z-40 border-b border-white/10 bg-slate-950/80 backdrop-blur-xl">
         <nav className="mx-auto flex h-20 w-[min(1200px,calc(100%-32px))] items-center justify-between gap-4">
-          <Link to="/" className="flex items-center gap-3 font-black tracking-tight">
-            <span className="grid h-11 w-11 place-items-center rounded-xl bg-blue-500 text-white shadow-glow">TT</span>
+          <Link to="/" className="flex items-center font-black tracking-tight">
             <span className="text-lg">TunaTuna</span>
           </Link>
           <div className="hidden items-center gap-6 text-sm font-semibold text-slate-300 md:flex">

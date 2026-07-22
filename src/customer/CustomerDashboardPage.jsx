@@ -719,7 +719,6 @@ export default function CustomerDashboardPage({ show, theme, toggleTheme }) {
       <div className={`customer-mobile-backdrop ${mobileOpen ? 'open' : ''}`} onClick={() => setMobileOpen(false)} />
       <aside className={`customer-sidebar ${mobileOpen ? 'mobile-open' : ''}`}>
         <div className="customer-sidebar__brand">
-          <div className="customer-sidebar__brand-mark">TT</div>
           <div>
             <strong>TunaTuna</strong>
             <small>Customer workspace</small>

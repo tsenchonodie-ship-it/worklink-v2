@@ -110,8 +110,7 @@ function WorkerDashboardLayout({ title, activeView, onSelect, theme, onThemeChan
     <section className={`dashboard-wrap ${currentTheme === 'light' ? 'theme-light' : 'theme-dark'}`}>
       <aside className={`dashboard-sidebar ${mobileNavOpen ? 'flex' : 'hidden'} md:flex`}>
         <div className="mb-6 rounded-[24px] border border-white/10 bg-gradient-to-br from-slate-900/80 to-slate-800/70 p-4 shadow-[0_20px_60px_rgba(2,8,23,0.4)]">
-          <div className="flex items-center gap-3">
-            <span className="grid h-12 w-12 place-items-center rounded-2xl bg-gradient-to-br from-blue-500 to-cyan-400 font-black text-white">TT</span>
+          <div className="flex items-center">
             <div>
               <strong className="text-white">TunaTuna</strong>
               <small className="block text-slate-400">{user?.role || 'worker'} workspace</small>
@@ -183,21 +182,42 @@ export default function WorkerDashboardPage({ show }) {
   const [passwordSaving, setPasswordSaving] = useState(false);
   const [themePreference, setThemePreference] = useState(() => localStorage.getItem('tunatuna_admin_theme') || 'dark');
 
+  const normalizeCollection = (value) => {
+    if (Array.isArray(value)) return value;
+    if (Array.isArray(value?.data)) return value.data;
+    if (value && typeof value === 'object') {
+      const fallback = value.data ?? value.items ?? value.results ?? value.records;
+      return Array.isArray(fallback) ? fallback : [];
+    }
+    return [];
+  };
+
   const load = async () => {
     try {
       const [dashboardResponse, bookingsResponse] = await Promise.all([
         api.get('/worker/dashboard').catch(() => ({ data: fallbackWorkerData })),
         api.get('/bookings').catch(() => ({ data: [] })),
       ]);
-      const dashboardData = dashboardResponse.data || fallbackWorkerData;
-      const bookings = Array.isArray(bookingsResponse.data) ? bookingsResponse.data : [];
-      setData({ ...dashboardData, bookings });
+      const dashboardData = dashboardResponse?.data ?? dashboardResponse ?? fallbackWorkerData;
+      const bookings = normalizeCollection(bookingsResponse?.data ?? bookingsResponse);
+      const normalizedDashboard = dashboardData && typeof dashboardData === 'object'
+        ? {
+            ...fallbackWorkerData,
+            ...dashboardData,
+            overview: dashboardData.overview || fallbackWorkerData.overview,
+            recentActivity: normalizeCollection(dashboardData.recentActivity),
+            reviews: normalizeCollection(dashboardData.reviews),
+            notifications: normalizeCollection(dashboardData.notifications),
+            bookings,
+          }
+        : { ...fallbackWorkerData, bookings };
+      setData(normalizedDashboard);
     } catch (error) {
       const message = apiMessage(error);
       if (show && message && !message.toLowerCase().includes('network')) {
         show(message, 'error');
       }
-      setData(fallbackWorkerData);
+      setData({ ...fallbackWorkerData, bookings: [] });
     }
   };
 

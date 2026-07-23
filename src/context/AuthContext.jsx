@@ -1,7 +1,22 @@
-import { createContext, useContext, useMemo, useState } from 'react';
+import { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import { api, apiMessage } from '../api/client';
 
-const AuthContext = createContext(null);
+const noopAsync = async () => null;
+const fallbackAuthValue = {
+  token: null,
+  user: null,
+  authReady: false,
+  login: noopAsync,
+  register: noopAsync,
+  forgotPassword: noopAsync,
+  refreshMe: noopAsync,
+  updateProfile: noopAsync,
+  changePassword: noopAsync,
+  logout: noopAsync,
+  apiMessage,
+};
+
+const AuthContext = createContext(fallbackAuthValue);
 
 export function AuthProvider({ children }) {
   const [token, setToken] = useState(() => localStorage.getItem('tunatuna_token'));
@@ -18,14 +33,29 @@ export function AuthProvider({ children }) {
       return null;
     }
   });
+  const [authReady, setAuthReady] = useState(false);
 
   const saveSession = (payload) => {
-    localStorage.setItem('tunatuna_token', payload.token);
-    localStorage.setItem('tunatuna_user', JSON.stringify(payload.user));
+    const nextToken = payload?.token || null;
+    const nextUser = payload?.user || payload || null;
+
+    if (nextToken) {
+      localStorage.setItem('tunatuna_token', nextToken);
+    } else {
+      localStorage.removeItem('tunatuna_token');
+    }
+
+    if (nextUser) {
+      localStorage.setItem('tunatuna_user', JSON.stringify(nextUser));
+    } else {
+      localStorage.removeItem('tunatuna_user');
+    }
+
     // eslint-disable-next-line no-console
-    console.debug('AuthContext: saveSession', payload.user?.role || 'unknown');
-    setToken(payload.token);
-    setUser(payload.user);
+    console.debug('AuthContext: saveSession', nextUser?.role || 'unknown');
+    setToken(nextToken);
+    setUser(nextUser);
+    setAuthReady(true);
   };
 
   const login = async (payload) => {
@@ -54,15 +84,18 @@ export function AuthProvider({ children }) {
 
   const refreshMe = async () => {
     const { data } = await api.get('/me');
-    localStorage.setItem('tunatuna_user', JSON.stringify(data));
-    setUser(data);
-    return data;
+    const nextUser = data.user ?? data;
+    localStorage.setItem('tunatuna_user', JSON.stringify(nextUser));
+    setUser(nextUser);
+    setAuthReady(true);
+    return nextUser;
   };
 
   const updateProfile = async (form) => {
     const { data } = await api.put('/me', form);
-    localStorage.setItem('tunatuna_user', JSON.stringify(data.user));
-    setUser(data.user);
+    const nextUser = data.user ?? data;
+    localStorage.setItem('tunatuna_user', JSON.stringify(nextUser));
+    setUser(nextUser);
     return data;
   };
 
@@ -81,13 +114,44 @@ export function AuthProvider({ children }) {
     localStorage.removeItem('tunatuna_user');
     setToken(null);
     setUser(null);
+    setAuthReady(true);
   };
 
+  useEffect(() => {
+    let cancelled = false;
+
+    const restoreSession = async () => {
+      const savedToken = localStorage.getItem('tunatuna_token');
+
+      if (!savedToken) {
+        if (!cancelled) setAuthReady(true);
+        return;
+      }
+
+      try {
+        await refreshMe();
+      } catch {
+        localStorage.removeItem('tunatuna_token');
+        localStorage.removeItem('tunatuna_user');
+        setToken(null);
+        setUser(null);
+      } finally {
+        if (!cancelled) setAuthReady(true);
+      }
+    };
+
+    void restoreSession();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const value = useMemo(() => ({
-    token, user, login, register, forgotPassword, refreshMe, updateProfile, changePassword, logout, apiMessage,
-  }), [token, user]);
+    token, user, authReady, login, register, forgotPassword, refreshMe, updateProfile, changePassword, logout, apiMessage,
+  }), [token, user, authReady]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
-export const useAuth = () => useContext(AuthContext);
+export const useAuth = () => useContext(AuthContext) || fallbackAuthValue;

@@ -5,14 +5,10 @@ const resolveApiBaseUrl = () => {
   if (configuredUrl) return configuredUrl.replace(/\/$/, '');
 
   if (typeof window !== 'undefined') {
-    const { protocol, hostname } = window.location;
-    if (hostname === '127.0.0.1' || hostname === 'localhost') {
-      return `${protocol}//${hostname}:8000`;
-    }
-    return `${protocol}//${hostname}`;
+    return window.location.origin;
   }
 
-  return 'http://127.0.0.1:8000';
+  return 'http://localhost';
 };
 
 const isDev = import.meta.env.DEV;
@@ -48,7 +44,7 @@ export function apiMessage(error) {
   }
 
   if (error?.code === 'ERR_NETWORK' || error?.message?.toLowerCase().includes('network')) {
-    return 'The backend service is not reachable right now. Please start the Laravel API and try again.';
+    return 'The backend service is not reachable right now. Please start the Express API server and try again.';
   }
 
   return error?.message || 'Something went wrong. Please try again.';

@@ -155,7 +155,7 @@ function PaymentCheckoutContent() {
           background: #fff;
           border: 1.5px solid ${LINE};
           border-radius: 10px;
-          padding: 11px 13px;
+          padding: 12px 16px;
           color: ${INK};
           font-family: 'Inter', sans-serif;
           font-size: 14px;
@@ -166,8 +166,8 @@ function PaymentCheckoutContent() {
         .pco-input:disabled { opacity: 0.6; }
         .pco-mono { font-family: 'IBM Plex Mono', monospace; }
         .pco-pay-btn {
-          width: 100%; border: none; border-radius: 12px; padding: 14px 18px;
-          font-family: 'Inter', sans-serif; font-weight: 600; font-size: 14.5px;
+          width: 100%; border: none; border-radius: 12px; padding: 16px 18px;
+          font-family: 'Inter', sans-serif; font-weight: 600; font-size: 14px;
           color: #fff; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px;
           background: linear-gradient(180deg, #171F38 0%, ${INK} 100%);
           box-shadow: 0 12px 24px -10px rgba(16,22,42,0.55);
@@ -176,8 +176,8 @@ function PaymentCheckoutContent() {
         .pco-pay-btn:hover:not(:disabled) { filter: brightness(1.12); transform: translateY(-1px); }
         .pco-pay-btn:disabled { opacity: 0.45; cursor: not-allowed; }
         .pco-reset-btn {
-          border: 1.5px solid ${LINE}; background: #fff; border-radius: 10px; padding: 11px 18px;
-          font-family: 'Inter', sans-serif; font-weight: 600; font-size: 13.5px; color: ${INK};
+          border: 1.5px solid ${LINE}; background: #fff; border-radius: 10px; padding: 12px 18px;
+          font-family: 'Inter', sans-serif; font-weight: 600; font-size: 14px; color: ${INK};
           cursor: pointer; transition: border-color 0.2s ease, background 0.2s ease;
         }
         .pco-reset-btn:hover { border-color: ${GOLD}; background: #FBF7EE; }
@@ -208,11 +208,11 @@ function PaymentCheckoutContent() {
           <h2 style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 600, fontSize: 19, color: INK, marginBottom: 3 }}>
             Nomad Pro
           </h2>
-          <p style={{ fontSize: 13, color: INK_SOFT, marginBottom: 24 }}>Billed yearly · auto-renews</p>
+          <p style={{ fontSize: 14, color: INK_SOFT, marginBottom: 24 }}>Billed yearly · auto-renews</p>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             {ITEMS.map((item) => (
-              <div key={item.label} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
+              <div key={item.label} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14 }}>
                 <span style={{ color: INK_SOFT }}>{item.label}</span>
                 <span className="pco-mono" style={{ color: item.amount < 0 ? EMERALD : INK }}>
                   {fmt(item.amount)}
@@ -221,13 +221,13 @@ function PaymentCheckoutContent() {
             ))}
           </div>
 
-          <div style={{ borderTop: `1.5px dashed ${LINE}`, margin: '18px 0 14px' }} />
+          <div style={{ borderTop: `1.5px dashed ${LINE}`, margin: '16px 0 16px' }} />
 
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-            <span style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 600, fontSize: 13.5, color: INK }}>
+            <span style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 600, fontSize: 14, color: INK }}>
               Total due
             </span>
-            <span className="pco-mono" style={{ fontSize: 22, fontWeight: 600, color: INK }}>
+            <span className="pco-mono" style={{ fontSize: 24, fontWeight: 600, color: INK }}>
               {fmt(TOTAL)}
             </span>
           </div>
@@ -353,7 +353,7 @@ function PaymentCheckoutContent() {
                       <div style={{ width: '100%', height: 40, background: '#0A0C14', marginTop: 20 }} />
                       <div style={{ padding: '20px 20px 0' }}>
                         <div style={{ background: '#fff', borderRadius: 4, height: 30, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', padding: '0 10px' }}>
-                          <span className="pco-mono" style={{ fontSize: 13, color: INK, letterSpacing: '0.2em' }}>
+                          <span className="pco-mono" style={{ fontSize: 14, color: INK, letterSpacing: '0.2em' }}>
                             •••
                           </span>
                         </div>
@@ -376,7 +376,7 @@ function PaymentCheckoutContent() {
                     disabled={status !== 'idle'}
                   />
                   <div className="pco-input" style={{ padding: 0 }}>
-                    <div style={{ padding: '11px 13px' }}>
+                    <div style={{ padding: '12px 16px' }}>
                       <CardNumberElement
                         onChange={() => undefined}
                         onFocus={() => setFocusedField('number')}
@@ -387,7 +387,7 @@ function PaymentCheckoutContent() {
                   </div>
                   <div style={{ display: 'flex', gap: 12 }}>
                     <div className="pco-input" style={{ padding: 0 }}>
-                      <div style={{ padding: '11px 13px' }}>
+                      <div style={{ padding: '12px 16px' }}>
                         <CardExpiryElement
                           onFocus={() => setFocusedField('expiry')}
                           onBlur={() => setFocusedField(null)}
@@ -396,7 +396,7 @@ function PaymentCheckoutContent() {
                       </div>
                     </div>
                     <div className="pco-input" style={{ padding: 0 }}>
-                      <div style={{ padding: '11px 13px' }}>
+                      <div style={{ padding: '12px 16px' }}>
                         <CardCvcElement
                           onFocus={() => setFocusedField('cvc')}
                           onBlur={() => setFocusedField(null)}
@@ -407,7 +407,7 @@ function PaymentCheckoutContent() {
                   </div>
 
                   {error && (
-                    <motion.div initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} style={{ padding: '10px 12px', borderRadius: 10, background: 'rgba(225,29,72,.08)', border: '1px solid rgba(225,29,72,.18)', color: '#b91c1c', fontSize: 13 }}>
+                    <motion.div initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} style={{ padding: '12px 16px', borderRadius: 10, background: 'rgba(225,29,72,.08)', border: '1px solid rgba(225,29,72,.18)', color: '#b91c1c', fontSize: 14 }}>
                       {error}
                     </motion.div>
                   )}

@@ -227,7 +227,8 @@ function useToast() {
 }
 
 function Protected({ roles, children }) {
-  const { user } = useAuth();
+  const { user, authReady } = useAuth();
+  if (!authReady) return <Loader />;
   if (!user) return <Navigate to="/login" replace />;
   if (roles && !roles.includes(user.role)) return <Navigate to="/dashboard" replace />;
   if (user.role === 'worker' && !['approved', 'verified'].includes(String(user.status || '').toLowerCase())) {
@@ -3937,12 +3938,12 @@ function LampLoginForm({ role, setRole, form, setForm, showPassword, setShowPass
         .lamp-btn { cursor: pointer; background: none; border: none; padding: 0; }
         .lamp-btn:focus-visible .lamp-shade,
         .lamp-btn:focus-visible .lamp-bulb { outline: 2px solid #ffb35c; outline-offset: 4px; border-radius: 4px; }
-        .llf-input { width: 100%; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.09); border-radius: 10px; padding: 12px 14px 12px 40px; color: #f4ecdf; font-family: 'Inter', sans-serif; font-size: 14.5px; outline: none; transition: border-color 0.25s ease, box-shadow 0.25s ease, background 0.25s ease; }
+        .llf-input { width: 100%; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.09); border-radius: 10px; padding: 12px 16px 12px 40px; color: #f4ecdf; font-family: 'Inter', sans-serif; font-size: 14px; outline: none; transition: border-color 0.25s ease, box-shadow 0.25s ease, background 0.25s ease; }
         .llf-input::placeholder { color: #4d5261; }
         .llf-input:focus { border-color: rgba(255,179,92,0.55); box-shadow: 0 0 0 3px rgba(255,179,92,0.12); background: rgba(255,179,92,0.04); }
         .llf-eye-btn { background: none; border: none; cursor: pointer; color: #6b7280; display: flex; align-items: center; padding: 4px; transition: color 0.2s ease; }
         .llf-eye-btn:hover { color: #ffb35c; }
-        .llf-submit { width: 100%; border: none; border-radius: 10px; padding: 13px 16px; font-family: 'Inter', sans-serif; font-weight: 600; font-size: 14.5px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; color: #14100a; background: linear-gradient(180deg, #ffcd8c 0%, #ffb35c 100%); box-shadow: 0 8px 22px -8px rgba(255,179,92,0.55); transition: transform 0.15s ease, box-shadow 0.15s ease, filter 0.15s ease; }
+        .llf-submit { width: 100%; border: none; border-radius: 10px; padding: 16px; font-family: 'Inter', sans-serif; font-weight: 600; font-size: 14px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; color: #14100a; background: linear-gradient(180deg, #ffcd8c 0%, #ffb35c 100%); box-shadow: 0 8px 22px -8px rgba(255,179,92,0.55); transition: transform 0.15s ease, box-shadow 0.15s ease, filter 0.15s ease; }
         .llf-submit:hover { filter: brightness(1.05); transform: translateY(-1px); }
         .llf-submit:active { transform: translateY(0); }
         .llf-submit:disabled { cursor: default; }
@@ -4041,12 +4042,12 @@ function LampLoginForm({ role, setRole, form, setForm, showPassword, setShowPass
                     )}
                     {status === 'loading' && (
                       <>
-                        <Loader2 size={16} className="llf-spin" /> Signing in…
+                        <LoaderCircle size={16} className="llf-spin" /> Signing in…
                       </>
                     )}
                     {status === 'success' && (
                       <>
-                        <Check size={16} /> Welcome back
+                        <CheckCircle2 size={16} /> Welcome back
                       </>
                     )}
                   </button>
@@ -4100,6 +4101,7 @@ function AuthPage({ mode, show }) {
   const [form, setForm] = useState({ full_name: '', email: '', phone: '', password: '', password_confirmation: '', username: '', address: '', service_category_id: '', experience: 2, bio: '', skills: '', price: 699 });
   const [categories, setCategories] = useState([]);
   const [busy, setBusy] = useState(false);
+  const [redirecting, setRedirecting] = useState(false);
 
   useEffect(() => {
     api.get('/categories').then(({ data }) => {
@@ -4107,6 +4109,12 @@ function AuthPage({ mode, show }) {
       if (data[0]) setForm((old) => ({ ...old, service_category_id: data[0].id }));
     }).catch(() => undefined);
   }, []);
+
+  useEffect(() => {
+    if (!redirecting || !user) return;
+    setRedirecting(false);
+    navigate('/dashboard', { replace: true });
+  }, [redirecting, user, navigate]);
 
   if (user) return <Navigate to="/dashboard" replace />;
 
@@ -4194,7 +4202,7 @@ function AuthPage({ mode, show }) {
       } else {
         const payload = role === 'admin' ? { role, username: form.username, password: form.password } : { role, email: form.email, password: form.password };
         await login(payload);
-        navigate('/dashboard');
+        setRedirecting(true);
       }
     } catch (error) {
       show(apiMessage(error), 'error');
